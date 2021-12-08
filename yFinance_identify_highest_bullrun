@@ -1,0 +1,87 @@
+##This file builds upon the DataFrame created in the CoinMarketCap API call file. It expands the dataframe by identifying if a token price multiplied by 2, 5, 10, 100 over the course of 
+# one bullrun.
+##It identifies the all time high after 01.01.2017 (if not manually changed) and identifies the time the 14 days avg price increased before that to identify the length of the bull.
+# Afterwards the price increase is identified and dummy variables for a significant increase (bull = 0, 1) and the respective multiplier reached (x2, x5, x10, x100, 0 if no, 1 if yes) are 
+# added to the dataframe
+
+##This code uses the yFinance API. Therefore, currently the functionality is limited to token that are 1. listed on yahooFinance and 2. can be found under the same ticker symbol on
+# CoinMarketCap and YahooFinance (e.g. BitCoin can be found on both websites by "BTC",  Solana cannot be found CMC: "SOL", yFinance: "SOL1", therefore doesn't work without further adjustments. 
+
+df_cmc  =  #output_dataframe from "CoinMarketCapAPICall" file
+tokens = tokens #same as in "CoinMarketCapAPICall"
+currency = currency #same as in "CoinMarketCapAPICall"
+
+def find_bull(tokens, currency, df):
+    df['bull'] = None
+    df['x2'] = None
+    df['x5'] = None
+    df['x10'] = None
+    df['x100'] = None
+    #print(df.head())
+    for token in tokens:
+        print(token)
+        df_yf = yf.download(token+'-'+currency, start="2017-01-01", end="2021-12-08",prepost = True)
+        df_yf = df_yf.reset_index()
+        #df_yf.tail()
+
+        df_yf['pct_change'] = df_yf['Adj Close'].pct_change()
+        df_yf['spread'] = df_yf['High'] - df_yf['Low']
+        df_yf['spread_change'] = df_yf['spread'].pct_change()
+        df_yf['mov_avg_change'] = df_yf['pct_change'].rolling(window = 14).mean()
+        df_yf['mov_avg_price'] = df_yf['Adj Close'].rolling(window = 14).mean()
+        df_yf['increase'] = np.where(df_yf['mov_avg_change'] > 0, 1, 0)
+        #df_yf.head(10)
+
+        #plt.plot(data['Date'], data[['Adj Close', 'mov_avg_price']])
+        #plt.show()
+
+        max_high = df_yf[df_yf['High'] == df_yf['High'].max()].index.values
+        #print('max high: ' + str(max_high))
+        max_high = max_high[-1]
+        if max_high == 0 or max_high == 1:
+            max_high = 2
+        #print('max high: ' + str(max_high))
+        
+        i = 1
+        bull_length = 1
+        while i == 1:
+            i = df_yf.loc[max_high - bull_length, 'increase']
+            bull_length += 1
+        #print(bull_length)
+
+        bull_run = df_yf.iloc[ max_high - bull_length :max_high,:]
+
+        #plt.plot(bull_run['Date'], bull_run[['Adj Close', 'mov_avg_price']])
+        #plt.show()
+        #bull_run.head(bull_length)
+
+        high = df_yf.loc[max_high, 'High'] ##can be used to get the dates of the run ==> use later to specify timeframe of mentiones in SNS
+        start = df_yf.loc[max_high - bull_length, 'Adj Close'] 
+        increase = high / start -1
+        print('increase from: ' + str(start))
+        print('to: ' + str(high))
+        print('equals to ' + str(increase*100) + '% over ' + str(bull_length) + ' days.')
+        
+
+        if increase < 2:
+            print('strong market only')
+            df.loc[token,['bull','x2','x5','x10','x100']] = 0
+        elif increase < 5:
+            print('x2')
+            df.loc[token,['bull','x2']] = 1
+            df.loc[token,['x5','x10','x100']] = 0
+        elif increase < 10:
+            print('x5')
+            df.loc[token,['bull','x2','x5']] = 1
+            df.loc[token,['x10','x100']] = 0
+        elif increase < 100:
+            print('x10')
+            df.loc[token,['bull','x2','x5','x10']] = 1
+            df.loc[token,'x100'] = 0
+        else:
+            print('x100')
+            df.loc[token,['bull','x2','x5','x10','x100']] = 1
+            
+    return df
+    
+   df_bullish = def find_bull(tokens, currency, df_cmc)
