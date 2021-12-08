@@ -1,0 +1,70 @@
+###This code call the CoinMarketCap API and transforms the downloaded data for the specified token into a DataFrame with the specified tags as dummy variables (1 if included, 0 if no if not)
+## Note that you must create a CMC account and use the API Key generated for your account. Must be entered in line 18.
+
+tokens = ['BTC', 'ETH', 'DOGE']
+currency = "USD"
+level_1 = ['symbol', 'name', 'circulating_supply', 'total_supply', 'max_supply','is_active', 'tags']
+level_2 = ['market_cap','price','percent_change_1h' ,'percent_change_24h','percent_change_7d', 'percent_change_30d'           ,'percent_change_60d','percent_change_90d', 'volume_24h','volume_change_24h']
+tags = ['pow', 'pos', 'memes', 'minable', 'staking'] #Specify Tags to be included as Dummy Variables in the dataframe later
+
+def fetch_cmc(tokens, currency, lv_1, lv_2, tags):
+    
+    output = pd.DataFrame(columns = lv_1+lv_2) ##prepare output pandas DataFrame 
+    tag_dict = {}
+    nr_tokens = len(tokens) ##get Number of tokens to iterate on later   
+    cr = 0 ##define counter of used up API credits
+    
+    url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest' # Coinmarketcap API url
+    headers = {'Accepts': 'application/json', 'X-CMC_PRO_API_KEY': '!!!YOUR API KEY HERE!!!} #define API key to access CMC-API
+    parameters = {'convert': currency } # API parameters to pass in for retrieving specific cryptocurrency data
+    
+    ##For-Loop to call data for each included token
+    for n in range(nr_tokens)+1:   
+        time.sleep(1)
+        print(tokens[n-1])
+        parameters['symbol'] = tokens[n-1] # API parameters to pass in for retrieving specific cryptocurrency data
+        
+        ##Set up API Call
+        session = Session()
+        session.headers.update(headers) 
+        response = session.get(url, params=parameters) ##Call API
+        #pprint(json.loads(response.text)) ##print complete API call response
+
+        ##iterate over level 1 and level 2 to fetch the data from the api call response levels
+        for l in lv_1:
+            d = json.loads(response.text)['data'][tokens[n-1]][l]
+            #print(d)
+            if l == 'tags':
+                tag_dict[tokens[n-1]] = d
+            else: 
+                output.at[n+1,l] = d
+
+        for l in lv_2:
+            d = json.loads(response.text)['data'][tokens[n-1]]['quote'][currency][l]
+            #print(d)
+            output.at[n+1,l] = d
+
+        ##count API credits used
+        cr += json.loads(response.text)['status']['credit_count'] 
+
+    ## enter tags in dataframe
+    #print(output.head())
+    output = output.reset_index()
+    output = output.set_index('symbol')
+    #print(output.head())
+            
+            
+    for tag in tags:
+        for t in tokens:
+            if tag in tag_dict[t]:
+                print(str(t)+': '+str(tag))
+                output.loc[t, tag] = 1
+            else:
+                output.loc[t, tag] = 0
+        
+    print('DataFrame created.')
+    print(str(cr) + ' API-Credits used.')
+    return output, tag_dict
+    
+   df_cmc, tags =  fetch_cmc(tokens, currency, lv_1, lv_2, tags)
+   
